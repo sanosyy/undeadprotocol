@@ -13,7 +13,7 @@ window.UP = window.UP || {};
     armored: { hp: 1.9, speed: 1.85, dmg: 25, scale: 1.06, skin: 0x6a7a6f, cloth: 0x2f3f5f, bodyMult: 0.6, vest: true },
     crawler: { hp: 0.5, speed: 1.35, dmg: 12, scale: 0.62, skin: 0x9a9263, cloth: 0x4a4238, bodyMult: 1.0, low: true },
     exploder:{ hp: 0.65, speed: 2.75, dmg: 0, scale: 1.0, skin: 0xc2c14a, cloth: 0x6a6a2a, bodyMult: 1.0, explode: true },
-    brute:   { hp: 5.5, speed: 1.5, dmg: 40, scale: 1.5, skin: 0x5f6a4a, cloth: 0x2a2f3a, bodyMult: 0.85, wide: true },
+    brute:   { hp: 2.2, speed: 1.5, dmg: 35, scale: 1.5, skin: 0x5f6a4a, cloth: 0x2a2f3a, bodyMult: 0.85, wide: true },
     boss:    { hp: 1.0, speed: 2.35, dmg: 50, scale: 2.1, skin: 0x7a3a3a, cloth: 0x24243a, bodyMult: 0.9, boss: true },
   };
 
@@ -162,7 +162,9 @@ window.UP = window.UP || {};
     z.path = null; z.pathIdx = 0; z.repathT = 0;
     z.attackCd = 0; z.flashT = 0; z.enrageT = 0; z.spitCd = 3;
     z.beeped = false; z.dead = false;
-    z.stuckT = 0; z.sideT = 0; z.sideDir = 1; z.sideCount = 0;
+    z.stuckT = 0; z.sideT = 0; z.sideDir = 1; z.sideCount = 0; z.stuckStrikes = 0;
+    z.loopT = 0; z.loopX = undefined; z.loopZ = undefined;
+    z.progressIdx = 0;
     z.lastX = 0; z.lastZ = 0; z.safeX = undefined; z.safeZ = undefined;
     z.groanT = UP.rand(2, 6);
     z.phase = Math.random() * 10;
@@ -213,7 +215,8 @@ window.UP = window.UP || {};
   Z.spawnBoss = function (vent, round) {
     const z = acquire();
     if (!z) return null;
-    Z.bossHpMult = 2600 * Math.pow(round / 10, 1.25) / hpBase(round);
+    // boss is the true tank of the map: far above any brute, scaling hard
+    Z.bossHpMult = 4200 * Math.pow(round / 10, 1.35) / hpBase(round);
     configure(z, 'boss', round);
     const free = findFreeSpawn(vent.x, vent.z, vent.y);
     z.x = free.x; z.y = vent.y; z.zc = free.z;
@@ -281,12 +284,20 @@ window.UP = window.UP || {};
     z.group.rotation.x = -Math.PI / 2;
   };
 
-  /* Walkable line-of-sight: both a feet-level and a head-level segment must
-     be clear, so zombies never "see" through windows, low doorways or gaps
-     their bodies can't actually fit through. */
+  /* Walkable line-of-sight: the center line at feet/waist/head AND two
+     side lines (±0.32m, box width) at waist height must all be clear —
+     so a pull that threads a doorway diagonally on the center line but
+     would clip the frame with the zombie's body is refused. */
   function bodyClear(ax, az, ay, bx, bz, by) {
-    return !UP.Map.segmentBlocked(ax, az, bx, bz, ay + 0.3, by + 0.3) &&
-           !UP.Map.segmentBlocked(ax, az, bx, bz, ay + 1.5, by + 1.5);
+    if (!UP.Map.segmentBlocked(ax, az, bx, bz, ay + 0.3, by + 0.3)) return false;
+    if (!UP.Map.segmentBlocked(ax, az, bx, bz, ay + 0.9, by + 0.9)) return false;
+    if (!UP.Map.segmentBlocked(ax, az, bx, bz, ay + 1.5, by + 1.5)) return false;
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz) || 1;
+    const px = -dz / len * 0.32, pz = dx / len * 0.32;
+    if (!UP.Map.segmentBlocked(ax + px, az + pz, bx + px, bz + pz, ay + 0.9, by + 0.9)) return false;
+    if (!UP.Map.segmentBlocked(ax - px, az - pz, bx - px, bz - pz, ay + 0.9, by + 0.9)) return false;
+    return true;
   }
 
   /* ---------------- per-frame update ---------------- */
@@ -388,7 +399,12 @@ window.UP = window.UP || {};
         continue;
       } else { /* chase */
         if (z.cfg.explode && distP < 3.0) { z.state = 'windup'; z.stateT = 0; continue; }
-        if (distP < 1.75 && z.attackCd <= 0 && Math.abs(py - z.y) < 2.2) {
+        // melee reach: normal range on flat ground, extended horizontal reach
+        // when the player is a bit higher up (standing on a bench/crate) so
+        // zombies swipe up onto low props instead of grinding beneath them
+        const dy = Math.abs(py - z.y);
+        const reach = dy < 1.15 ? 2.15 : 1.75;
+        if (distP < reach && z.attackCd <= 0 && dy < 2.2) {
           z.state = 'attack'; z.stateT = 0; z.hitDone = false;
           continue;
         }
@@ -406,6 +422,7 @@ window.UP = window.UP || {};
             const newPath = UP.Map.findPath(a, b);
             z.path = newPath;
             z.pathIdx = 0;
+            z.progressIdx = 0;
             if (newPath) {
               // preserve forward progress: keep walking to the node we were
               // already heading for if it's still on the fresh path
@@ -416,16 +433,15 @@ window.UP = window.UP || {};
             }
           }
           if (z.path && z.path.length) {
-            // string-pulling: jump ahead to visible nodes so the zombie
-            // walks straight lines through open rooms instead of being
-            // dragged back to the start node on every repath
+            // string-pulling: shortcut to the NEXT node when it's directly
+            // walkable. Capped at one node past the last node physically
+            // arrived at — the pull can never run the target far ahead,
+            // which used to strand zombies on far stale targets.
             let idx = Math.min(z.pathIdx, z.path.length - 1);
+            const capIdx = Math.min((z.progressIdx || 0) + 1, z.path.length - 1);
             let guard = 0;
-            while (idx < z.path.length - 1 && guard++ < 2) {
+            while (idx < capIdx && guard++ < 2) {
               const next = UP.Map.nodes[z.path[idx + 1]];
-              // pull only between LEVEL nodes (±0.2): any height change
-              // (ramps, landings, stairs) must be walked node-to-node,
-              // following the actual walkway — never cut diagonally
               if (Math.abs(next.y - z.y) < 0.2 &&
                   bodyClear(z.x, z.zc, z.y, next.x, next.z, next.y)) {
                 idx++;
@@ -437,10 +453,20 @@ window.UP = window.UP || {};
             const dn = UP.dist2(z.x, z.zc, node.x, node.z);
             if (dn < 1.0 && idx < z.path.length - 1) {
               z.pathIdx++;
+              z.progressIdx = z.pathIdx;
               node = UP.Map.nodes[z.path[z.pathIdx]];
               z.targetNodeId = z.path[z.pathIdx];
+              z.stuckStrikes = 0; // making real node progress
             }
             target = { x: node.x, z: node.z };
+            // terminal approach: single-node path means the player is in
+            // this node's basin — if we're near the node, walk straight
+            // at the player. Prevents freeze-jitter between the node target
+            // and the direct-steer branch fighting each other.
+            if (z.path.length === 1) {
+              const n0 = UP.Map.nodes[z.path[0]];
+              if (UP.dist2(z.x, z.zc, n0.x, n0.z) < 6) target = { x: px, z: pz };
+            }
           } else {
             target = { x: px, z: pz }; // no path — walk directly
           }
@@ -473,16 +499,36 @@ window.UP = window.UP || {};
       /* ---------- movement + collision ---------- */
       if (vx || vz) {
         const r = 0.34 * z.cfg.scale;
+        const top = z.y + 1.7 * z.cfg.scale;
         const nx = z.x + vx * dt, nz = z.zc + vz * dt;
-        if (!hitsCollider(nx, z.zc, r, z.y, z.y + 1.7 * z.cfg.scale)) z.x = nx;
-        if (!hitsCollider(z.x, nz, r, z.y, z.y + 1.7 * z.cfg.scale)) z.zc = nz;
+        const bx = hitsCollider(nx, z.zc, r, z.y, top);
+        const bz = hitsCollider(z.x, nz, r, z.y, top);
+        if (!bx) z.x = nx;
+        if (!bz) z.zc = nz;
+        // blocked face-first? convert forward speed into a slide along the
+        // obstacle RIGHT NOW instead of grinding until the stuck timer fires
+        if (bx && Math.abs(vx) > Math.abs(vz)) {
+          const s = Math.abs(vz) > 0.05 ? Math.sign(vz) : (z.sideDir || 1);
+          z.sideDir = s;
+          const snz = z.zc + s * Math.abs(vx) * dt;
+          if (!hitsCollider(z.x, snz, r, z.y, top)) z.zc = snz;
+        } else if (bz && Math.abs(vz) > Math.abs(vx)) {
+          const s = Math.abs(vx) > 0.05 ? Math.sign(vx) : (z.sideDir || 1);
+          z.sideDir = s;
+          const snx = z.x + s * Math.abs(vz) * dt;
+          if (!hitsCollider(snx, z.zc, r, z.y, top)) z.x = snx;
+        }
         // safety net: if we somehow ended up wedged inside geometry,
-        // revert to the last position+height that was provably clear
-        if (hitsCollider(z.x, z.zc, r, z.y, z.y + 1.7 * z.cfg.scale)) {
+        // revert to the last position+height that was provably clear and
+        // DROP the current target so the next repath picks a sane route
+        // (a wedged zombie that keeps its target re-wedges forever)
+        if (hitsCollider(z.x, z.zc, r, z.y, top)) {
           if (z.safeX !== undefined) {
             z.x = z.safeX; z.zc = z.safeZ;
             if (z.safeY !== undefined) z.y = z.safeY;
           }
+          z.targetNodeId = undefined;
+          z.repathT = 0;
         } else {
           z.safeX = z.x; z.safeZ = z.zc; z.safeY = z.y;
         }
@@ -505,9 +551,35 @@ window.UP = window.UP || {};
         if (z.stuckT > 1.6) {
           z.stuckT = 0;
           z.sideCount = (z.sideCount || 0) + 1;
+          z.stuckStrikes = (z.stuckStrikes || 0) + 1;
           if (z.sideCount % 3 === 0) z.sideDir *= -1; // commit to one side
           z.sideT = 1.4;
           z.repathT = 0; // force fresh path
+          // three stuck cycles without reaching a node = navigation is
+          // wedged on a stale far target. Full reset: rebuild from the
+          // graph and walk node-to-node (the graph route always works).
+          if (z.stuckStrikes % 3 === 0) {
+            z.path = null;
+            z.pathIdx = 0;
+            z.progressIdx = 0;
+            z.targetNodeId = undefined;
+          }
+        }
+        // net-progress loop detector: a zombie that keeps MOVING but ends
+        // up back where it was 4s ago is pacing in a loop — rebuild its
+        // navigation from scratch.
+        z.loopT = (z.loopT || 0) + dt;
+        if (z.loopT > 4) {
+          z.loopT = 0;
+          if (UP.dist2(z.x, z.zc, z.loopX !== undefined ? z.loopX : z.x,
+                       z.loopZ !== undefined ? z.loopZ : z.zc) < 1.5) {
+            z.path = null;
+            z.pathIdx = 0;
+            z.progressIdx = 0;
+            z.targetNodeId = undefined;
+            z.repathT = 0;
+          }
+          z.loopX = z.x; z.loopZ = z.zc;
         }
       }
       z.lastX = z.x; z.lastZ = z.zc;

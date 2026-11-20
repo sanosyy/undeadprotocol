@@ -164,6 +164,7 @@ window.UP = window.UP || {};
     P.dead = false;
     P.reloading = 0; P.switching = 0; P.ads = 0; P.fireHeld = false; P.busy = 0;
     P.lastHurt = -10;
+    P.safeX = 0; P.safeZ = 2; P.safeY = 0;
     for (let i = 0; i < 2; i++) {
       if (P.slots[i]) { P.viewRoot.remove(P.slots[i].model); P.slots[i] = null; }
     }
@@ -537,6 +538,21 @@ window.UP = window.UP || {};
       P.onGround = true;
     } else {
       P.onGround = false;
+    }
+
+    // safety net (same as the zombies have): if we somehow ended up wedged
+    // inside geometry — tight stairwell corners, door frames, wall seams —
+    // revert to the last position that was provably clear instead of
+    // leaving the player frozen until they press K
+    const h2 = 1.75 - P.crouchT * 0.65;
+    if (boxBlocked(P.pos.x, P.pos.z, P.pos.y, h2)) {
+      if (P.safeX !== undefined) {
+        P.pos.x = P.safeX; P.pos.z = P.safeZ;
+        if (P.safeY !== undefined) P.pos.y = P.safeY;
+        P.vel.set(0, 0, 0);
+      }
+    } else {
+      P.safeX = P.pos.x; P.safeZ = P.pos.z; P.safeY = P.pos.y;
     }
 
     // footsteps

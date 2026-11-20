@@ -169,7 +169,22 @@ body.insta #crosshair .ch { background:#ff8888; }
 .menu-panel h1 span { color:#e33; }
 .go-title { color:#e33 !important; text-shadow:0 0 40px rgba(255,30,30,.8) !important; }
 .subtitle { font-size:14px; letter-spacing:6px; color:#8a94a0; }
+.byline { font-size:13px; letter-spacing:5px; color:#cfd6de; margin-top:2px; }
+.byline b { color:#ffd76a; text-shadow:0 0 12px rgba(255,200,60,.4); }
+.go-byline { margin-top:10px; opacity:.85; }
+.credits-name { font-family:'Impact',sans-serif; font-size:22px; letter-spacing:4px; color:#ffd76a; }
+.credits-repo { color:#7ecbff; }
 #beststats { font-size:12px; letter-spacing:3px; color:#ffd76a; min-height:16px; }
+
+/* GitHub source button — bottom right of menu panels */
+.github-btn { position:absolute; right:28px; bottom:24px; display:flex; align-items:center; gap:12px;
+  padding:12px 22px; background:rgba(22,27,34,.92); border:1px solid rgba(240,246,252,.16);
+  border-radius:8px; color:#e6edf3; text-decoration:none; font-family:'Impact','Arial Black',sans-serif;
+  font-size:16px; letter-spacing:2.5px; transition:all .15s; z-index:5; }
+.github-btn svg { width:30px; height:30px; color:#e6edf3; transition:transform .15s; }
+.github-btn:hover { border-color:#e33; background:rgba(60,16,16,.9); color:#fff;
+  box-shadow:0 0 18px rgba(255,50,50,.35); }
+.github-btn:hover svg { transform:scale(1.12); }
 
 .menu-btns { display:flex; flex-direction:column; gap:10px; margin-top:14px; width:280px; }
 .mbtn { padding:13px 0; font-family:'Impact','Arial Black',sans-serif; font-size:20px;

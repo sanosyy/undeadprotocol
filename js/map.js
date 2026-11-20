@@ -105,8 +105,10 @@ window.UP = window.UP || {};
   }
 
   /* -------------------------------------------------- doors */
-  /* w = opening width, h = door height, side = which face the sign renders on */
-  function makeDoor(id, name, cost, needsPower, x, z, along, yBase, nodeA, nodeB, roomId, roomsOpen, w = 4, h = 2.6, side = -1) {
+  /* w = opening width, h = door height, side = which face the sign renders on,
+     wallTop = top of the wall containing this door; a lintel is built above
+     the opening so there's no see-through gap over the door. */
+  function makeDoor(id, name, cost, needsPower, x, z, along, yBase, nodeA, nodeB, roomId, roomsOpen, w = 4, h = 2.6, side = -1, wallTop = 0) {
     const group = new T.Group();
     const mat = new T.MeshStandardMaterial({ map: UP.Tex.hazard(2, 2), roughness: 0.7, metalness: 0.4 });
     const panel = new T.Mesh(new T.BoxGeometry(along === 'z' ? w : 0.24, h, along === 'z' ? 0.24 : w), mat);
@@ -137,6 +139,20 @@ window.UP = window.UP || {};
     if (along === 'z') { s.position.set(x, yBase + h - 0.45, z + 0.42 * side); s.rotation.y = side > 0 ? 0 : Math.PI; }
     else { s.position.set(x + 0.42 * side, yBase + h - 0.45, z); s.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2; }
     group.add(s);
+    // lintel: fill the gap between the top of the door opening and the top
+    // of the wall it sits in (otherwise there's a see-through slot)
+    if (wallTop > yBase + h + 0.01) {
+      const lh = wallTop - (yBase + h);
+      const lintel = new T.Mesh(new T.BoxGeometry(along === 'z' ? w + 0.3 : 0.3, lh, along === 'z' ? 0.3 : w + 0.3), fMat);
+      lintel.position.set(x, yBase + h + lh / 2, z);
+      group.add(lintel);
+      M.raycastStatics.push(lintel);
+      addBoxCollider(along === 'z' ? x - w / 2 - 0.15 : x - 0.15, yBase + h,
+                     along === 'z' ? z - 0.15 : z - w / 2 - 0.15,
+                     along === 'z' ? x + w / 2 + 0.15 : x + 0.15,
+                     wallTop,
+                     along === 'z' ? z + 0.15 : z + w / 2 + 0.15);
+    }
     M.scene.add(group);
 
     const collider = { x1: x - (along === 'z' ? w / 2 : 0.25), y1: yBase, z1: z - (along === 'z' ? 0.25 : w / 2),
@@ -345,7 +361,9 @@ window.UP = window.UP || {};
   function buildLab() {
     const H = 3.8;
     roomFloor(-14, -28, 14, -14, 0, _floorA);
+    // south wall with two windows + corridor mouth lintel
     wallBox(-14, -14, -2, -14, 0, H, _wallMatA); wallBox(2, -14, 14, -14, 0, H, _wallMatA);
+    wallBox(-2, -14, 2, -14, 2.6, H, _wallMatA); // lintel over the AB corridor mouth
     // north wall with two windows
     wallBox(-14, -28, -8, -28, 0, H, _wallMatA); wallBox(-4, -28, 4, -28, 0, H, _wallMatA); wallBox(8, -28, 14, -28, 0, H, _wallMatA);
     makeWindow('w1', 'B', -6, -28, 'z', 0, -1, 4);
@@ -370,7 +388,9 @@ window.UP = window.UP || {};
     roomLight(-9, 3.5, -24, 0xffd9a0, 0.8, false);
     roomLight(9, 3.5, -24, 0xffd9a0, 0.8, true);
     // props: lab tables, tanks, racks
-    propBox(0, 0, -18, 5, 0.9, 1.6, _floorC);           // central bench
+    propBox(-6, 0, -18, 5, 0.9, 1.6, _floorC);          // bench — kept clear of the
+    // nav corridor (n2->n3 runs through x=0; a bench at (0,-18) made zombies
+    // grind into it forever when the player stood on the far side)
     propBox(-10, 0, -20, 1.5, 1.8, 1.0, _wallMatC);     // server rack
     propBox(-10, 0, -22.2, 1.5, 1.8, 1.0, _wallMatC);
     propBox(-10, 0, -24.4, 1.5, 1.8, 1.0, _wallMatC);
@@ -409,6 +429,7 @@ window.UP = window.UP || {};
     makeWindow('w3', 'C', 16, 3, 'z', 0, 1, 4);
     wallBox(22, -3, 22, 3, 0, H, _wallMatB);
     wallBox(10, -3, 10, -1, 0, H, _wallMatB); wallBox(10, 1, 10, 3, 0, H, _wallMatB);
+    wallBox(10, -1, 10, 1, 2.6, H, _wallMatB); // lintel over the AC corridor mouth
     roomLight(16, 2.8, 0, 0xffd9a0, 0.85, false);
     sign('WEAPON STORAGE', 16, 2.6, -2.8, 0, 1.1, { size: 38, color: '#d8c892' });
     // gun racks / shelving — x[15,20] so it never covers the SMG wall buy at x=12.5
@@ -427,6 +448,7 @@ window.UP = window.UP || {};
     makeWindow('w4', 'D', -14, -3, 'z', 0, -1, 4);
     wallBox(-20, 3, -8, 3, 0, H, _wallMatA);
     wallBox(-8, -3, -8, -1, 0, H, _wallMatA); wallBox(-8, 1, -8, 3, 0, H, _wallMatA);
+    wallBox(-8, -1, -8, 1, 2.6, H, _wallMatA); // lintel over the AD corridor mouth
     roomLight(-14, 2.8, 0, 0xd8e8f0, 0.8, true);
     sign('MEDICAL BAY', -14, 2.6, -2.8, 0, 1.0, { size: 38, color: '#9fc0d0' });
     // beds
@@ -446,6 +468,7 @@ window.UP = window.UP || {};
     wallBox(18, -18, 28, -18, 0, H, _wallMatB);
     wallBox(28, -28, 28, -18, 0, H, _wallMatB);
     wallBox(18, -28, 18, -24, 0, H, _wallMatB); wallBox(18, -20, 18, -18, 0, H, _wallMatB);
+    wallBox(18, -24, 18, -20, 2.8, H, _wallMatB); // lintel over the BE corridor mouth
     roomLight(23, 3.2, -23, 0xffc890, 0.75, true);
     sign('GENERATOR ROOM', 23, 3.0, -18.3, Math.PI, 1.1, { size: 38, color: '#d8a878' });
     makeVent('v4', 'E', 26.4, 0, -20);
@@ -522,13 +545,16 @@ window.UP = window.UP || {};
     slab(-26, -26, -14, -20, SH, SH + 0.2, _wallMatB, false, true);
     // ramp (x -14 y0 -> x -26 y5) over z[-24,-20]
     rampFloor(-26, -24, -14, -20, 'x', -26, -14, 5, 0, _wallMatC);
-    // side rails along the ramp — zombies ride the ramp cleanly to the top
-    // and can only step off at the west end (x < -25.1), onto the landing
-    wallBox(-24.8, -24.1, -14.2, -23.9, 0, 5.2, _wallMatC);
-    wallBox(-24.8, -20.1, -14.2, -19.9, 0, 5.2, _wallMatC);
     // solid base under the y5 landing — nobody can fall/walk underneath it,
     // and it blocks AI line-of-sight so zombies route around the corner, not across
     propBox(-20, 0, -25, 12, 4.5, 2, _wallMatB, true);
+    // guard along the ramp's north edge, continuous with the block face so
+    // there is no pocket to wedge into. It stops 1m short of the lab wall
+    // (no visual overlap, roof door stays clear) and its top (5.2) keeps
+    // walkers on the landing funnelled through the roof door — the ramp
+    // exit is at the high west end (x < -24.74), where they cross over it.
+    // The south edge needs nothing — the stairwell's own south wall covers it.
+    wallBox(-24.4, -24.1, -15.2, -23.9, 0, 5.2, _wallMatB);
     // landing floor at y5 over z[-26,-24]
     roomFloor(-26, -26, -14, -24, 5, _wallMatC);
     roomLight(-20, 7.6, -22, 0xffffff, 0.7, true);
@@ -570,7 +596,7 @@ window.UP = window.UP || {};
       [0, 0, 0], [0, 0, -10], [0, 0, -16], [0, 0, -21], [-12, 0, -21], [12, 0, -21],
       [16, 0, -22], [20.5, 0, -21], [8, 0, 0], [16, 0, 0], [-8, 0, 0], [-14, 0, 0],
       [0, -1.5, 9], [0, -3, 14], [0, -3, 22], [12, -3, 20], [19, -3, 21],
-      [-15, 0, -22], [-20, 2.5, -22], [-20, 5, -25], [-12, 5, -25], [0, 5, -21], [10, 5, -21],
+      [-15, 0, -22], [-20, 2.5, -22], [-20, 5, -25], [-12, 5, -25], [0, 5, -19], [10, 5, -21],
       [7, -3, 29],
       [-25.2, 4.6, -22],   // 24: top of the stairwell ramp (west end)
       [-25.3, 5, -24.8],   // 25: landing NW corner (step-up point)
@@ -599,14 +625,14 @@ window.UP = window.UP || {};
   function buildDoors() {
     // (id, name, cost, power, x, z, along, yBase, nodeA, nodeB, roomId, roomsOpen, w, h, signSide)
     const defs = [
-      ['d1', 'LABORATORY', 750, false, 0, -6, 'z', 0, 0, 1, 'B', ['AB', 'B'], 4, 2.6, 1],
-      ['d2', 'WEAPON STORAGE', 1000, false, 6, 0, 'x', 0, 0, 8, 'C', ['AC', 'C'], 2, 2.6, -1],
-      ['d3', 'MEDICAL BAY', 750, false, -6, 0, 'x', 0, 0, 10, 'D', ['AD', 'D'], 2, 2.6, -1],
-      ['d4', 'TUNNELS', 500, false, 0, 6, 'z', 0, 0, 12, 'F', ['AF', 'F'], 4, 2.6, -1],
-      ['pd1', 'GENERATOR', 1250, false, 14, -22, 'x', 0, 5, 6, 'E', ['BE', 'E'], 4, 2.6, -1],
-      ['d5', 'STAIRWELL', 1250, true, -14, -22, 'x', 0, 4, 17, 'S', ['S'], 2, 2.6, 1],
-      ['pd3', 'ROOFTOP', 1500, true, -14, -25, 'x', 5, 19, 20, 'R', ['R'], 2, 2.2, -1],
-      ['pd2', 'CONTAINMENT VAULT', 1000, true, 14, 20, 'x', -3, 15, 16, 'G', ['FG', 'G'], 4, 2.6, -1],
+      ['d1', 'LABORATORY', 750, false, 0, -6, 'z', 0, 0, 1, 'B', ['AB', 'B'], 4, 2.6, 1, 3.2],
+      ['d2', 'WEAPON STORAGE', 1000, false, 6, 0, 'x', 0, 0, 8, 'C', ['AC', 'C'], 2, 2.6, -1, 3.2],
+      ['d3', 'MEDICAL BAY', 750, false, -6, 0, 'x', 0, 0, 10, 'D', ['AD', 'D'], 2, 2.6, -1, 3.2],
+      ['d4', 'TUNNELS', 500, false, 0, 6, 'z', 0, 0, 12, 'F', ['AF', 'F'], 4, 2.6, -1, 3.2],
+      ['pd1', 'GENERATOR', 1250, false, 14, -22, 'x', 0, 5, 6, 'E', ['BE', 'E'], 4, 2.6, -1, 3.8],
+      ['d5', 'STAIRWELL', 1250, true, -14, -22, 'x', 0, 4, 17, 'S', ['S'], 2, 2.6, 1, 8.5],
+      ['pd3', 'ROOFTOP', 1500, true, -14, -25, 'x', 5, 19, 20, 'R', ['R'], 2, 2.2, -1, 7.2],
+      ['pd2', 'CONTAINMENT VAULT', 1000, true, 14, 20, 'x', -3, 15, 16, 'G', ['FG', 'G'], 4, 2.6, -1, -0.2],
     ];
     for (const d of defs) makeDoor(...d);
     // bind doors to nav edges: find edge spanning the two nodes

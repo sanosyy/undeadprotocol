@@ -140,48 +140,96 @@ window.UP = window.UP || {};
     weaponSwitch() { A.noise({ dur: 0.06, freq: 2000, type: 'bandpass', q: 3, gain: 0.2 }); },
 
     /* ---------------- zombies ---------------- */
-    groan(pos) {
+    /* Shared zombie voice: detuned saw "vocal cords" through a bandpass
+       formant (the throat) + lowpass, with a falling pitch contour and a
+       breath noise layer. This is what makes it read as a VOICE instead
+       of a raw sawtooth buzz. */
+    _zVoice({ pos, f0 = 80, dur = 1.2, gain = 0.45, dip = 0.85, end = 0.55, breath = 0.05 }) {
       if (!A.ctx || A._groans >= 4) return;
       A._groans++;
-      setTimeout(() => A._groans--, 900);
-      const f0 = 55 + Math.random() * 45;
+      setTimeout(() => A._groans--, dur * 1000 + 150);
       const t0 = A.now();
-      const o = A.ctx.createOscillator(); o.type = 'sawtooth';
-      o.frequency.setValueAtTime(f0, t0);
-      // wobbling pitch — the "voice"
-      o.frequency.setValueAtTime(f0 * (0.8 + Math.random() * 0.5), t0 + 0.25);
-      o.frequency.setValueAtTime(f0 * (0.65 + Math.random() * 0.4), t0 + 0.6);
-      o.frequency.exponentialRampToValueAtTime(f0 * 0.55, t0 + 1.1);
-      const f = A.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.Q.value = 2;
-      const g = A.ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.32, t0 + 0.18);
-      g.gain.setValueAtTime(0.28, t0 + 0.7);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.15);
-      o.connect(f); f.connect(g); g.connect(A._spatial(pos, A.sfx));
-      o.start(t0); o.stop(t0 + 1.25);
+      const env = A.ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(gain, t0 + dur * 0.22);
+      env.gain.setValueAtTime(gain * 0.9, t0 + dur * 0.6);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      const formant = A.ctx.createBiquadFilter();
+      formant.type = 'bandpass'; formant.frequency.value = 240 + Math.random() * 120; formant.Q.value = 1.4;
+      const lp = A.ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 850;
+      env.connect(formant); formant.connect(lp); lp.connect(A._spatial(pos, A.sfx));
+      // vocal cords: three detuned saws, pitch contour dips then falls
+      for (const [det, lvl] of [[-9, 0.32], [6, 0.32], [0, 0.5]]) {
+        const o = A.ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.detune.value = det * 11 + (Math.random() - 0.5) * 8;
+        const f = f0 * (0.9 + Math.random() * 0.2);
+        o.frequency.setValueAtTime(f, t0);
+        o.frequency.setValueAtTime(f * dip, t0 + dur * 0.45);
+        o.frequency.exponentialRampToValueAtTime(f * end, t0 + dur);
+        const og = A.ctx.createGain();
+        og.gain.value = lvl;
+        o.connect(og); og.connect(env);
+        o.start(t0); o.stop(t0 + dur + 0.05);
+      }
+      if (breath > 0) {
+        A.noise({ dur: dur * 0.8, freq: 420, q: 0.7, gain: breath, pos, attack: 0.2, rate: 0.5 });
+      }
+    },
+    groan(pos) {
+      A._zVoice({ pos, f0: 68 + Math.random() * 34, dur: 1.1 + Math.random() * 0.6,
+        gain: 0.42, dip: 0.82, end: 0.55, breath: 0.05 });
     },
     zStep(pos) { A.noise({ dur: 0.07, freq: 240, gain: 0.16, rate: 0.6, pos }); },
     zAttack(pos) {
-      A.noise({ dur: 0.16, freq: 900, type: 'bandpass', q: 1.5, gain: 0.35, pos });
-      A.tone({ freq: 200, end: 90, dur: 0.15, type: 'sawtooth', gain: 0.12, pos });
+      // claw whoosh: noise sweep rising fast, like a blade through air
+      A.noise({ dur: 0.18, freq: 500, gain: 0.3, pos, slide: 2600, q: 1.2 });
+      A.noise({ dur: 0.06, freq: 2200, type: 'highpass', gain: 0.1, pos, delay: 0.02 });
     },
     zDie(pos) {
-      A.tone({ freq: 110, end: 35, dur: 0.5, type: 'sawtooth', gain: 0.22, pos });
-      A.noise({ dur: 0.3, freq: 500, gain: 0.18, pos, rate: 0.7 });
+      // dying voice: the same formant voice collapsing in pitch + a wet thud
+      A._zVoice({ pos, f0: 110 + Math.random() * 30, dur: 0.55, gain: 0.4, dip: 0.7, end: 0.3, breath: 0.08 });
+      A.noise({ dur: 0.25, freq: 320, gain: 0.22, pos, rate: 0.6, delay: 0.05 });
     },
     zHit(pos) { A.noise({ dur: 0.09, freq: 700, type: 'bandpass', q: 2, gain: 0.28, pos }); },
-    exploderBeep(pos) { for (let i = 0; i < 3; i++) A.tone({ freq: 1200, dur: 0.07, type: 'square', gain: 0.16, pos, delay: i * 0.16 }); },
+    exploderBeep(pos) { for (let i = 0; i < 3; i++) A.tone({ freq: 1250 + i * 140, dur: 0.07, type: 'square', gain: 0.16, pos, delay: i * 0.16 }); },
     explosion(pos, big = false) {
-      A.noise({ dur: big ? 1.0 : 0.55, freq: 140, gain: big ? 1.0 : 0.7, rate: 0.5, pos });
-      A.tone({ freq: 90, end: 28, dur: 0.5, type: 'triangle', gain: 0.7, pos });
-      A.noise({ dur: 0.2, freq: 3000, type: 'highpass', gain: 0.3, pos, delay: 0.02 });
+      A.noise({ dur: big ? 1.0 : 0.55, freq: 130, gain: big ? 1.0 : 0.7, rate: 0.5, pos });
+      A.noise({ dur: big ? 0.45 : 0.25, freq: 900, gain: 0.45, pos, rate: 0.8 });
+      A.tone({ freq: 95, end: 26, dur: 0.55, type: 'triangle', gain: 0.7, pos });
+      // debris crackle
+      for (let i = 0; i < 5; i++) A.noise({ dur: 0.04, freq: 1800 + Math.random() * 2500, type: 'highpass', gain: 0.1, pos, delay: 0.1 + Math.random() * 0.4 });
     },
     bossRoar(pos) {
-      A.tone({ freq: 60, end: 30, dur: 1.6, type: 'sawtooth', gain: 0.8, pos, detune: 30 });
-      A.tone({ freq: 44, end: 24, dur: 1.8, type: 'sawtooth', gain: 0.7, pos, detune: -40 });
-      A.noise({ dur: 1.4, freq: 300, gain: 0.5, rate: 0.4, pos });
-      A.tone({ freq: 200, end: 60, dur: 0.5, type: 'square', gain: 0.25, pos, delay: 0.2 });
+      // a proper monster: distorted growl chord + rumble + shriek tail
+      const t0 = A.now();
+      const shaper = A.ctx.createWaveShaper();
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 3.5); }
+      shaper.curve = curve;
+      const env = A.ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(0.85, t0 + 0.15);
+      env.gain.setValueAtTime(0.7, t0 + 1.1);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.8);
+      const formant = A.ctx.createBiquadFilter();
+      formant.type = 'bandpass'; formant.frequency.setValueAtTime(320, t0);
+      formant.frequency.exponentialRampToValueAtTime(150, t0 + 1.6); formant.Q.value = 1.2;
+      const lp = A.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+      shaper.connect(formant); formant.connect(lp); lp.connect(env);
+      env.connect(A._spatial(pos, A.sfx));
+      for (const [f0, det] of [[46, 0], [61, 8], [38, -10]]) {
+        const o = A.ctx.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f0 * 1.25, t0);
+        o.frequency.exponentialRampToValueAtTime(f0, t0 + 0.3);
+        o.frequency.exponentialRampToValueAtTime(f0 * 0.72, t0 + 1.7);
+        o.detune.value = det * 12;
+        o.connect(shaper);
+        o.start(t0); o.stop(t0 + 1.85);
+      }
+      A.noise({ dur: 1.5, freq: 260, gain: 0.5, rate: 0.4, pos });
+      A.tone({ freq: 480, end: 140, dur: 0.7, type: 'sawtooth', gain: 0.2, pos, delay: 0.25 }); // shriek layer
     },
 
     /* ---------------- player ---------------- */
