@@ -558,6 +558,9 @@ window.UP = window.UP || {};
     scene().add(m);
     M.raycastStatics.push(m);
     addBoxCollider(x - w / 2, y, z - d / 2, x + w / 2, y + h, z + d / 2, los);
+    // the top of a prop is a standable surface — players who jump onto it
+    // land ON it instead of sinking inside the collider and getting stuck
+    M.floors.push({ x1: x - w / 2, z1: z - d / 2, x2: x + w / 2, z2: z + d / 2, y: y + h });
     return m;
   }
 

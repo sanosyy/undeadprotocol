@@ -177,7 +177,9 @@ window.UP = window.UP || {};
     const s = cfg.scale;
     z.group.scale.set(s * (cfg.wide ? 1.25 : 1), cfg.low ? s * 0.8 : s, s);
     z.group.rotation.set(cfg.low ? 1.1 : 0, 0, 0);
-    if (cfg.low) { z.group.position.y = -0.55; } // crawler pose
+    // crawler: pitched-forward low pose, but the body stays ABOVE ground
+    // (a -0.55m offset previously sank it into the floor)
+    z.group.position.y = 0;
     z.group.visible = true;
     z.active = true;
     Z.alive.push(z);
@@ -312,10 +314,10 @@ window.UP = window.UP || {};
       if (z.state === 'rise') {
         const t = Math.min(z.stateT / 0.9, 1);
         const yy = z.group.position.y;
-        z.group.position.y = (z.cfg.low ? -0.55 : 0) + z.y - 1.6 * (1 - t);
+        z.group.position.y = z.y - 1.6 * (1 - t);
         if (t >= 1) {
           z.state = z.win ? 'toWindow' : 'chase';
-          z.group.position.y = (z.cfg.low ? -0.55 : 0) + z.y;
+          z.group.position.y = z.y;
         }
         continue;
       }
@@ -356,7 +358,7 @@ window.UP = window.UP || {};
         z.x = UP.lerp(z.vFromX, z.vToX, t);
         z.zc = UP.lerp(z.vFromZ, z.vToZ, t);
         z.y = UP.lerp(z.vFromY, z.vToY, t) + Math.sin(t * Math.PI) * 0.5;
-        z.group.position.set(z.x, z.y + (z.cfg.low ? -0.55 : 0), z.zc);
+        z.group.position.set(z.x, z.y, z.zc);
         z.yaw = Math.atan2(z.vToX - z.vFromX, z.vToZ - z.vFromZ);
         z.group.rotation.y = z.yaw;
         if (t >= 1) { z.state = 'chase'; z.win = null; }
@@ -518,7 +520,11 @@ window.UP = window.UP || {};
         if (d2 < 0.45 * 0.45 && d2 > 1e-6) {
           const d = Math.sqrt(d2);
           const push = (0.45 - d) * 0.35;
-          z.x += (ddx / d) * push; z.zc += (ddz / d) * push;
+          const nx2 = z.x + (ddx / d) * push, nz2 = z.zc + (ddz / d) * push;
+          // never shove a zombie inside geometry (props, walls)
+          if (!hitsCollider(nx2, nz2, 0.34 * z.cfg.scale, z.y, z.y + 1.7 * z.cfg.scale)) {
+            z.x = nx2; z.zc = nz2;
+          }
         }
       }
 
@@ -534,7 +540,7 @@ window.UP = window.UP || {};
         if (distP < 38) UP.Audio.groan({ x: z.x, y: z.y + 1.4, z: z.zc });
       }
 
-      z.group.position.set(z.x, z.y + (z.cfg.low ? -0.55 : 0), z.zc);
+      z.group.position.set(z.x, z.y, z.zc);
       z.group.rotation.y = z.yaw;
       animateWalk(z, dt);
     }
