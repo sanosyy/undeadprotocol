@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNDEAD PROTOCOL — Round-Based Zombie Survival</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- Full-screen overlays -->
+<div id="vignette"></div>
+<div id="dmg"></div>
+<div id="scope" hidden></div>
+<div id="nuke-flash"></div>
+
+<!-- ==================== HUD ==================== -->
+<div id="hud" hidden>
+  <div id="top-left">
+    <div id="round-box">
+      <span id="round-label">ROUND</span>
+      <span id="round-num">1</span>
+    </div>
+    <div class="tl-row" id="zleft">REMAINING&nbsp;<b id="z-count">0</b></div>
+    <div class="tl-row" id="killrow">KILLS&nbsp;<b id="kill-count">0</b></div>
+  </div>
+
+  <div id="announce"></div>
+  <div id="subann"></div>
+  <div id="event-banner"></div>
+
+  <div id="boss-wrap" hidden>
+    <div id="boss-name">PATIENT ZERO</div>
+    <div class="bar"><div id="boss-fill"></div></div>
+  </div>
+
+  <div id="pu-list"></div>
+  <div id="unstuck-ind"></div>
+
+  <div id="crosshair">
+    <span class="ch" id="ch-t"></span><span class="ch" id="ch-b"></span>
+    <span class="ch" id="ch-l"></span><span class="ch" id="ch-r"></span>
+    <span id="ch-dot"></span>
+  </div>
+  <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
+  <div id="hs-pop">HEADSHOT</div>
+
+  <div id="interact"></div>
+
+  <div id="bottom-left">
+    <div id="points">500</div>
+    <div id="pfloat"></div>
+    <div id="perk-list"></div>
+  </div>
+
+  <div id="bottom-center">
+    <div class="bar" id="stam-bar"><div id="st-fill"></div></div>
+    <div class="bar" id="armor-bar"><div id="ar-fill"></div></div>
+    <div class="bar" id="hp-bar"><div id="hp-fill"></div></div>
+  </div>
+
+  <div id="bottom-right">
+    <div id="loadout"></div>
+    <div id="wname">M1911</div>
+    <div id="wtag"></div>
+    <div id="ammo"><b id="ammo-mag">8</b><span id="ammo-res"> / 64</span></div>
+  </div>
+</div>
+
+<!-- ==================== MENUS ==================== -->
+<div id="menu-root">
+  <div id="main-menu" class="menu-panel">
+    <h1>UNDEAD<span> PROTOCOL</span></h1>
+    <div class="subtitle">BLACKSITE 7 &mdash; CONTAINMENT FAILED</div>
+    <div id="beststats"></div>
+    <div class="menu-btns">
+      <button id="btn-play" class="mbtn primary">PLAY</button>
+      <button id="btn-settings" class="mbtn">SETTINGS</button>
+      <button id="btn-credits" class="mbtn">CREDITS</button>
+    </div>
+    <div id="credits" hidden>
+      <p>UNDEAD PROTOCOL &mdash; a round-based zombie survival FPS.</p>
+      <p>Built with HTML5, JavaScript and Three.js (r128). All 3D models, textures,
+         animations and sounds are generated procedurally at runtime &mdash; no external assets.</p>
+      <p>Inspired by Call of Duty: Zombies and Killing Floor.</p>
+    </div>
+  </div>
+
+  <div id="settings-menu" class="menu-panel" hidden>
+    <h2>SETTINGS</h2>
+    <div class="set-grid">
+      <label>Mouse Sensitivity <span id="vsens" class="val">1.0</span></label>
+      <input type="range" id="set-sens" min="0.2" max="3" step="0.1">
+      <label>Field of View <span id="vfov" class="val">75</span></label>
+      <input type="range" id="set-fov" min="60" max="100" step="1">
+      <label>Master Volume <span id="vmaster" class="val">80%</span></label>
+      <input type="range" id="set-master" min="0" max="1" step="0.05">
+      <label>Music / Ambience <span id="vmusic" class="val">50%</span></label>
+      <input type="range" id="set-music" min="0" max="1" step="0.05">
+      <label>Sound Effects <span id="vsfx" class="val">90%</span></label>
+      <input type="range" id="set-sfx" min="0" max="1" step="0.05">
+      <label>Graphics Quality</label>
+      <select id="set-quality">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+      <label>Blood Effects</label>
+      <select id="set-blood">
+        <option value="on" selected>On</option>
+        <option value="off">Off (sparks)</option>
+      </select>
+    </div>
+    <div class="menu-btns"><button id="btn-set-back" class="mbtn primary">BACK</button></div>
+  </div>
+
+  <div id="pause-menu" class="menu-panel" hidden>
+    <h2>PAUSED</h2>
+    <div class="menu-btns">
+      <button id="btn-resume" class="mbtn primary">RESUME</button>
+      <button id="btn-psettings" class="mbtn">SETTINGS</button>
+      <button id="btn-restart" class="mbtn">RESTART</button>
+      <button id="btn-quit" class="mbtn">ABANDON RUN</button>
+    </div>
+  </div>
+
+  <div id="gameover-menu" class="menu-panel" hidden>
+    <h1 class="go-title">YOU DIED</h1>
+    <div class="subtitle" id="go-sub">The facility claims another.</div>
+    <div class="go-grid">
+      <div><b id="go-round">1</b><span>ROUND</span></div>
+      <div><b id="go-kills">0</b><span>KILLS</span></div>
+      <div><b id="go-hs">0</b><span>HEADSHOTS</span></div>
+      <div><b id="go-points">0</b><span>POINTS EARNED</span></div>
+      <div><b id="go-time">0:00</b><span>SURVIVED</span></div>
+    </div>
+    <div id="go-best"></div>
+    <div class="menu-btns">
+      <button id="btn-again" class="mbtn primary">TRY AGAIN</button>
+      <button id="btn-gomenu" class="mbtn">MAIN MENU</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading">LOADING&hellip;</div>
+<div id="err-overlay" hidden><h2>ERROR</h2><pre id="err-text"></pre></div>
+
+<script src="js/vendor/three.min.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/map.js"></script>
+<script src="js/zombies.js"></script>
+<script src="js/player.js"></script>
+<script src="js/machines.js"></script>
+<script src="js/powerups.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
